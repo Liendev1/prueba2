@@ -1,0 +1,12 @@
+{
+  "name": "tic tac toc",
+  "short_name": "tic tac toc",
+  "id": "com.example.gamename",
+  "description": "",
+  "orientation": "portrait",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "black",
+  "categories": ["games", "entertainment"],
+  "icons": []
+}
