@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mi Portal de Juegos</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.7.1/jszip.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: Arial, sans-serif;
+        }
+
+        body {
+            background-color: #1a1a1a;
+            color: white;
+        }
+
+        .navbar {
+            background-color: #2d2d2d;
+            padding: 1rem;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+
+        .navbar h1 {
+            color: #00ff95;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        .game-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 1.5rem;
+            margin-top: 2rem;
+        }
+
+        .game-card {
+            background-color: #2d2d2d;
+            border-radius: 10px;
+            overflow: hidden;
+            transition: transform 0.2s;
+            cursor: pointer;
+        }
+
+        .game-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .game-thumbnail {
+            width: 100%;
+            height: 150px;
+            background-color: #3d3d3d;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .game-info {
+            padding: 1rem;
+        }
+
+        .game-title {
+            font-size: 1.1rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .upload-section {
+            background-color: #2d2d2d;
+            padding: 2rem;
+            border-radius: 10px;
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+
+        .upload-button {
+            background-color: #00ff95;
+            color: #1a1a1a;
+            padding: 1rem 2rem;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: bold;
+            transition: background-color 0.2s;
+        }
+
+        .upload-button:hover {
+            background-color: #00cc78;
+        }
+
+        #gameModal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.9);
+            z-index: 1000;
+        }
+
+        .modal-content {
+            background-color: #2d2d2d;
+            margin: 5% auto;
+            padding: 2rem;
+            width: 90%;
+            height: 80%;
+            max-width: 1200px;
+            border-radius: 10px;
+            position: relative;
+        }
+
+        .close-button {
+            position: absolute;
+            right: 1rem;
+            top: 1rem;
+            font-size: 1.5rem;
+            cursor: pointer;
+            color: #fff;
+            z-index: 1100;
+        }
+
+        #gameContainer {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        #gameFrame {
+            width: 100%;
+            height: 100%;
+            border: none;
+            background-color: white;
+        }
+
+        .loading {
+            color: white;
+            text-align: center;
+            padding: 2rem;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <h1>Mi Portal de Juegos</h1>
+    </nav>
+
+    <div class="container">
+        <div class="upload-section">
+            <input type="file" id="gameUpload" accept=".zip" style="display: none">
+            <button class="upload-button" onclick="document.getElementById('gameUpload').click()">
+                Subir Nuevo Juego (.zip)
+            </button>
+        </div>
+
+        <div class="game-grid" id="gameGrid">
+            <!-- Los juegos se agregarán aquí dinámicamente -->
+        </div>
+    </div>
+
+    <div id="gameModal">
+        <div class="modal-content">
+            <span class="close-button" onclick="closeGameModal()">×</span>
+            <div id="gameContainer">
+                <iframe id="gameFrame" sandbox="allow-scripts allow-same-origin allow-modals"></iframe>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let games = [];
+        let gameBlobs = new Map();
+
+        async function processGameZip(file) {
+            try {
+                const zip = new JSZip();
+                const contents = await zip.loadAsync(file);
+                
+                // Encontrar la carpeta principal del juego
+                const gameFolderName = Object.keys(contents.files).find(name => name.endsWith('/'));
+                if (!gameFolderName) throw new Error('No se encontró la carpeta del juego');
+
+                // Buscar el archivo index.html
+                let indexFile = null;
+                let indexPath = '';
+                let indexContent = '';
+                
+                for (let path in contents.files) {
+                    if (path.toLowerCase().endsWith('index.html')) {
+                        indexFile = contents.files[path];
+                        indexPath = path;
+                        indexContent = await indexFile.async('text');
+                        break;
+                    }
+                }
+                
+                if (!indexFile) throw new Error('No se encontró el archivo index.html');
+
+                // Procesar todos los archivos y crear blob URLs
+                const fileUrls = new Map();
+                for (let path in contents.files) {
+                    const file = contents.files[path];
+                    if (!file.dir) {
+                        let content;
+                        // Determinar el tipo de contenido
+                        if (path.endsWith('.html')) {
+                            content = await file.async('text');
+                        } else if (path.endsWith('.js')) {
+                            content = await file.async('text');
+                        } else if (path.endsWith('.css')) {
+                            content = await file.async('text');
+                        } else {
+                            content = await file.async('blob');
+                        }
+                        
+                        // Crear blob URL para el archivo
+                        const blob = new Blob([content], {
+                            type: getContentType(path)
+                        });
+                        const blobUrl = URL.createObjectURL(blob);
+                        fileUrls.set(path, blobUrl);
+                    }
+                }
+
+                // Reemplazar rutas relativas en el HTML con blob URLs
+                for (const [path, url] of fileUrls) {
+                    const relativePath = path.replace(gameFolderName, '');
+                    indexContent = indexContent.replace(new RegExp(relativePath, 'g'), url);
+                }
+
+                // Crear blob final del HTML con las rutas actualizadas
+                const finalBlob = new Blob([indexContent], { type: 'text/html' });
+                const gameUrl = URL.createObjectURL(finalBlob);
+
+                return {
+                    name: gameFolderName.slice(0, -1),
+                    url: gameUrl,
+                    fileUrls: fileUrls
+                };
+            } catch (error) {
+                throw new Error('Error al procesar el ZIP: ' + error.message);
+            }
+        }
+
+        function getContentType(filename) {
+            if (filename.endsWith('.html')) return 'text/html';
+            if (filename.endsWith('.js')) return 'application/javascript';
+            if (filename.endsWith('.css')) return 'text/css';
+            if (filename.endsWith('.png')) return 'image/png';
+            if (filename.endsWith('.jpg') || filename.endsWith('.jpeg')) return 'image/jpeg';
+            if (filename.endsWith('.gif')) return 'image/gif';
+            return 'application/octet-stream';
+        }
+
+        document.getElementById('gameUpload').addEventListener('change', async (event) => {
+            const file = event.target.files[0];
+            if (file) {
+                try {
+                    const gameInfo = await processGameZip(file);
+                    const gameId = Date.now();
+                    games.push({
+                        id: gameId,
+                        name: gameInfo.name,
+                        url: gameInfo.url
+                    });
+                    
+                    // Guardar las URLs de los archivos
+                    gameBlobs.set(gameId, gameInfo.fileUrls);
+                    
+                    updateGameGrid();
+                    alert('¡Juego subido exitosamente!');
+                } catch (error) {
+                    alert('Error al subir el juego: ' + error.message);
+                }
+            }
+        });
+
+        function updateGameGrid() {
+            const gameGrid = document.getElementById('gameGrid');
+            gameGrid.innerHTML = '';
+
+            games.forEach(game => {
+                const gameCard = document.createElement('div');
+                gameCard.className = 'game-card';
+                gameCard.innerHTML = `
+                    <div class="game-thumbnail">
+                        <img src="/api/placeholder/200/150" alt="${game.name}">
+                    </div>
+                    <div class="game-info">
+                        <h3 class="game-title">${game.name}</h3>
+                    </div>
+                `;
+                gameCard.onclick = () => openGameModal(game);
+                gameGrid.appendChild(gameCard);
+            });
+        }
+
+        function loadGame(game) {
+            const iframe = document.getElementById('gameFrame');
+            iframe.src = game.url;
+        }
+
+        function openGameModal(game) {
+            const modal = document.getElementById('gameModal');
+            modal.style.display = 'block';
+            loadGame(game);
+        }
+
+        function closeGameModal() {
+            const modal = document.getElementById('gameModal');
+            const iframe = document.getElementById('gameFrame');
+            iframe.src = 'about:blank';
+            modal.style.display = 'none';
+        }
+
+        window.onclick = function(event) {
+            const modal = document.getElementById('gameModal');
+            if (event.target == modal) {
+                closeGameModal();
+            }
+        }
+
+        // Limpiar blobs cuando se cierra la página
+        window.onbeforeunload = function() {
+            for (const game of games) {
+                URL.revokeObjectURL(game.url);
+                const fileUrls = gameBlobs.get(game.id);
+                if (fileUrls) {
+                    for (const url of fileUrls.values()) {
+                        URL.revokeObjectURL(url);
+                    }
+                }
+            }
+        };
+    </script>
+</body>
+</html>
